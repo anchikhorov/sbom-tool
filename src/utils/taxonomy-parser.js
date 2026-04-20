@@ -83,6 +83,7 @@ export async function getAllowedProperties() {
     }
   }
 
-  // 3. Fallback to hardcoded defaults
-  return properties || DEFAULT_PROPERTIES;
+  // 3. Always merge with defaults to ensure bsi:hash-source and others are present
+  const allProperties = new Set([...DEFAULT_PROPERTIES, ...(properties || [])]);
+  return [...allProperties];
 }
