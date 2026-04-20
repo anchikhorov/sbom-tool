@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { generateAction } from '../src/commands/generate.js';
 import { validateAction } from '../src/commands/validate.js';
+import { auditAction } from '../src/commands/audit.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,5 +30,13 @@ program
   .description('Validate an SBOM against CycloneDX 1.6 and BSI TR-03183-2')
   .argument('<path>', 'Path to the SBOM file')
   .action(validateAction);
+
+program
+  .command('audit')
+  .description('Audit an SBOM for BSI compliance and identify gaps')
+  .argument('<path>', 'Path to the SBOM file')
+  .option('--output-dir <dir>', 'Directory to save audit reports', './audit-reports/')
+  .option('--format <format>', 'Output format (markdown, json, both)', 'both')
+  .action(auditAction);
 
 program.parse();
