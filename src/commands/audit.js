@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { runAudit } from '../core/audit.js';
+import { validateSbom } from '../core/validation.js';
 import { generateMarkdownReport, generateJSONReport } from '../utils/reports.js';
 
 /**
@@ -26,7 +27,25 @@ export async function auditAction(inputPath, options) {
   const outputDir = resolve(options.outputDir || './audit-reports/');
   mkdirSync(outputDir, { recursive: true });
 
-  const findings = runAudit(sbom);
+  const findings = [];
+
+  // 1. Structural and Taxonomy Validation
+  const validationResult = await validateSbom(sbom);
+  if (!validationResult.valid) {
+    validationResult.errors.forEach(err => {
+      findings.push({
+        ruleId: 'VALIDATION-ERROR',
+        severity: 'error',
+        message: err,
+        location: 'Structural/Taxonomy',
+        remediation: 'Fix the reported validation error in the SBOM source.'
+      });
+    });
+  }
+
+  // 2. Compliance Audit
+  const auditFindings = runAudit(sbom);
+  findings.push(...auditFindings);
 
   const metadata = {
     target: inputPath,
