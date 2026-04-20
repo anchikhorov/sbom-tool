@@ -23,3 +23,14 @@
 - [x] 02-02-PLAN.md — Dynamic Taxonomy & Enrichment Providers
 - [ ] 02-03-PLAN.md — Environment Isolation & Master Loop
 - [ ] 02-04-PLAN.md — CLI Integration & Verification
+
+## Phase 3: Audit & Verification Workflow
+
+**Goal:** Implement the `audit` command and modular rules engine to facilitate manual review of SBOMs as required by BSI TR-03183-2 §5.1.
+
+**Requirements:** [AUDIT-01, AUDIT-02, REPORT-01, REPORT-02, CLI-03]
+
+**Plans:** 3 plans
+- [ ] 03-01-PLAN.md — Modular Audit Engine
+- [ ] 03-02-PLAN.md — Report Generators
+- [ ] 03-03-PLAN.md — CLI Command & Integration
