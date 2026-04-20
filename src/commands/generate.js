@@ -28,7 +28,7 @@ function run(cmd, opts = {}) {
  */
 function capture(cmd) {
   try {
-    return execSync(cmd, { encoding: "utf8" }).trim();
+    return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch (err) {
     return "";
   }

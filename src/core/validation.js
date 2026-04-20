@@ -5,7 +5,15 @@ import spdxSchema from '../../schemas/spdx.schema.json' with { type: 'json' };
 import jsfSchema from '../../schemas/jsf-0.82.schema.json' with { type: 'json' };
 import spdxLicenses from '../../schemas/spdx-licenses.json' with { type: 'json' };
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ 
+  allErrors: true, 
+  strict: false,
+  logger: {
+    log: console.log,
+    warn: () => {}, // Silence warnings like "unknown format"
+    error: console.error
+  }
+});
 addFormats(ajv);
 
 // Add supporting schemas
