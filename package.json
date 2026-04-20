@@ -1,0 +1,25 @@
+{
+  "name": "@rowe/sbom-tool",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Enterprise SBOM generation and validation tool",
+  "main": "src/index.js",
+  "bin": {
+    "sbom-tool": "bin/sbom-tool.mjs"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vitest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "@cyclonedx/cdxgen": "^10.0.0",
+    "ajv": "^8.12.0",
+    "ajv-formats": "^2.1.1"
+  },
+  "devDependencies": {
+    "vitest": "^1.2.0",
+    "memfs": "^4.6.0"
+  }
+}

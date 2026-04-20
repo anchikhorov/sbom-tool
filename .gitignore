@@ -1,0 +1,7 @@
+node_modules/
+coverage/
+*.bom.json
+*-bom.json
+result.txt
+.DS_Store
+.env
