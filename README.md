@@ -80,4 +80,7 @@ The tool automatically looks for an `sbom.config.json` in the current working di
 For large projects (2,000+ components), the tool uses parallel batch processing to ensure fast execution while respecting registry rate limits.
 
 ## License
+
+MIT License. See [LICENSE](LICENSE) for details.
+
 Provided "AS IS" for technical taxonomy validation purposes.
