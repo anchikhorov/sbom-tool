@@ -32,5 +32,5 @@
 
 **Plans:** 3 plans
 - [x] 03-01-PLAN.md — Modular Audit Engine
-- [ ] 03-02-PLAN.md — Report Generators
+- [x] 03-02-PLAN.md — Report Generators
 - [ ] 03-03-PLAN.md — CLI Command & Integration
