@@ -19,7 +19,9 @@
 export function runAudit(sbom) {
   const findings = [];
   const rules = [
-    completenessRule
+    completenessRule,
+    integrityRule,
+    complianceRule
   ];
 
   for (const rule of rules) {
@@ -33,6 +35,10 @@ export function runAudit(sbom) {
   return findings;
 }
 
+const getComponentLocation = (comp) => {
+  return `Component: ${comp.name}@${comp.version}${comp.purl ? ` (PURL: ${comp.purl})` : ''}`;
+};
+
 const completenessRule = {
   id: 'AUDIT-COMPLETENESS',
   severity: 'warning',
@@ -40,7 +46,7 @@ const completenessRule = {
     const findings = [];
     
     const checkComponent = (comp) => {
-      const location = `Component: ${comp.name}@${comp.version}${comp.purl ? ` (PURL: ${comp.purl})` : ''}`;
+      const location = getComponentLocation(comp);
       
       if (comp.name === 'NOASSERTION') {
         findings.push({
@@ -85,6 +91,88 @@ const completenessRule = {
               });
             }
           }
+        });
+      }
+    };
+
+    if (sbom.metadata && sbom.metadata.component) {
+      checkComponent(sbom.metadata.component);
+    }
+
+    if (sbom.components) {
+      sbom.components.forEach(checkComponent);
+    }
+
+    return findings;
+  }
+};
+
+const integrityRule = {
+  id: 'AUDIT-INTEGRITY',
+  severity: 'warning',
+  test: (sbom) => {
+    const findings = [];
+
+    const checkComponent = (comp) => {
+      const location = getComponentLocation(comp);
+      const hashSource = comp.properties?.find(p => p.name === 'bsi:hash-source')?.value;
+
+      if (hashSource === 'calculated') {
+        findings.push({
+          ruleId: 'AUDIT-INTEGRITY',
+          severity: 'warning',
+          message: 'Component hash is calculated and requires manual verification.',
+          location,
+          remediation: 'Verify the hash against official sources and update source to "official".'
+        });
+      }
+    };
+
+    if (sbom.metadata && sbom.metadata.component) {
+      checkComponent(sbom.metadata.component);
+    }
+
+    if (sbom.components) {
+      sbom.components.forEach(checkComponent);
+    }
+
+    return findings;
+  }
+};
+
+const complianceRule = {
+  id: 'AUDIT-COMPLIANCE',
+  severity: 'error',
+  test: (sbom) => {
+    const findings = [];
+
+    // Check compositions
+    if (sbom.compositions) {
+      sbom.compositions.forEach((comp, index) => {
+        if (comp.aggregate === 'incomplete') {
+          findings.push({
+            ruleId: 'AUDIT-COMPLIANCE',
+            severity: 'error',
+            message: 'Composition aggregate is incomplete.',
+            location: `Composition: [${index}]`,
+            remediation: 'Ensure all dependencies are included in the SBOM.'
+          });
+        }
+      });
+    }
+
+    // Check BSI mandatory properties
+    const checkComponent = (comp) => {
+      const location = getComponentLocation(comp);
+      const filename = comp.properties?.find(p => p.name === 'bsi:component:filename')?.value;
+
+      if (!filename && comp.type !== 'application') {
+        findings.push({
+          ruleId: 'AUDIT-COMPLIANCE',
+          severity: 'error',
+          message: 'Missing mandatory BSI property: bsi:component:filename',
+          location,
+          remediation: 'Provide the filename for this component.'
         });
       }
     };
