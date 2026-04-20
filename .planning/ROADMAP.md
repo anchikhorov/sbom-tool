@@ -21,8 +21,8 @@
 **Plans:** 4 plans
 - [x] 02-01-PLAN.md — Foundation & Pre-flight
 - [x] 02-02-PLAN.md — Dynamic Taxonomy & Enrichment Providers
-- [ ] 02-03-PLAN.md — Environment Isolation & Master Loop
-- [ ] 02-04-PLAN.md — CLI Integration & Verification
+- [x] 02-03-PLAN.md — Environment Isolation & Master Loop
+- [x] 02-04-PLAN.md — CLI Integration & Verification
 
 ## Phase 3: Audit & Verification Workflow
 
@@ -31,6 +31,6 @@
 **Requirements:** [AUDIT-01, AUDIT-02, REPORT-01, REPORT-02, CLI-03]
 
 **Plans:** 3 plans
-- [ ] 03-01-PLAN.md — Modular Audit Engine
+- [x] 03-01-PLAN.md — Modular Audit Engine
 - [ ] 03-02-PLAN.md — Report Generators
 - [ ] 03-03-PLAN.md — CLI Command & Integration
