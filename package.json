@@ -13,13 +13,15 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "commander": "^11.1.0",
     "@cyclonedx/cdxgen": "^10.0.0",
     "ajv": "^8.12.0",
-    "ajv-formats": "^2.1.1"
+    "ajv-formats": "^2.1.1",
+    "axios": "^1.15.1",
+    "commander": "^11.1.0",
+    "which": "^6.0.1"
   },
   "devDependencies": {
-    "vitest": "^1.2.0",
-    "memfs": "^4.6.0"
+    "memfs": "^4.6.0",
+    "vitest": "^1.2.0"
   }
 }
