@@ -18,7 +18,8 @@
 
 **Requirements:** [ENR-01, TAXO-02, ORCH-01, ORCH-02, CONF-02, VAL-02]
 
-**Plans:** 3 plans
+**Plans:** 4 plans
 - [ ] 02-01-PLAN.md — Foundation & Pre-flight
 - [ ] 02-02-PLAN.md — Dynamic Taxonomy & Enrichment Providers
-- [ ] 02-03-PLAN.md — Master Loop & Enhanced Validation
+- [ ] 02-03-PLAN.md — Environment Isolation & Master Loop
+- [ ] 02-04-PLAN.md — CLI Integration & Verification
