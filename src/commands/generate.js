@@ -7,6 +7,7 @@ import { validateSbom } from '../core/validation.js';
 import { loadConfig } from '../utils/config.js';
 import { checkCdxgen, installCdxgen } from '../utils/preflight.js';
 import { prepareIsolation, cleanupIsolation } from '../utils/isolation.js';
+import { DISCLAIMER } from '../utils/disclaimer.js';
 
 /**
  * Executes a command and streams output.
@@ -74,7 +75,7 @@ export async function generateAction(projectPath, options) {
     }
 
     // 4. Enrichment: Apply tiered enrichment loop
-    console.log(`\n[4/5] Enrichment: Applying BSI TR-03183-2 compliance...`);
+    console.log(`\n[4/5] Enrichment: Applying BSI TR-03183-2 attribute mapping...`);
     const rawSbom = JSON.parse(readFileSync(rawOutput, "utf8"));
     const enrichedSbom = await enrichSbom(rawSbom, {
       creatorEmail: config.creatorEmail,
@@ -87,16 +88,18 @@ export async function generateAction(projectPath, options) {
     const validationResult = await validateSbom(enrichedSbom);
     
     if (!validationResult.valid) {
-      console.error("\n❌ Validation Failed:");
+      console.error("\n❌ Technical Taxonomy Validation Failed:");
       validationResult.errors.forEach(err => console.error(` - ${err}`));
       // We still write the file but exit with error
       writeFileSync(outputFile, JSON.stringify(enrichedSbom, null, 2), "utf8");
-      console.log(`\n⚠️  Enriched SBOM (with errors) saved to: ${outputFile}`);
+      console.log(`\n⚠️  Enriched SBOM (with technical errors) saved to: ${outputFile}`);
+      console.log(DISCLAIMER);
       process.exit(1);
     }
 
     writeFileSync(outputFile, JSON.stringify(enrichedSbom, null, 2), "utf8");
-    console.log(`\n✅ SBOM generated, enriched, and validated: ${outputFile}`);
+    console.log(`\n✅ SBOM generated, enriched, and technically validated: ${outputFile}`);
+    console.log(DISCLAIMER);
 
   } catch (error) {
     console.error(`\n❌ Error during generation: ${error.message}`);

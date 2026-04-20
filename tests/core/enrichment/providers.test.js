@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
 import fs from 'fs/promises';
 import { fetchRegistryData } from '../../../src/core/enrichment/npm-provider.js';
 import { fetchLocalData } from '../../../src/core/enrichment/local-provider.js';
 import { normalizeGitUrl } from '../../../src/core/enrichment/git-provider.js';
 
-vi.mock('axios');
 vi.mock('fs/promises');
+
+global.fetch = vi.fn();
 
 describe('Enrichment Providers', () => {
   beforeEach(() => {
@@ -15,35 +15,44 @@ describe('Enrichment Providers', () => {
 
   describe('NPM Provider (Tier 1)', () => {
     it('should fetch integrity and license from registry', async () => {
-      axios.get.mockResolvedValue({
+      global.fetch.mockResolvedValue({
+        ok: true,
         status: 200,
-        data: {
+        json: () => Promise.resolve({
           dist: { integrity: 'sha512-abc' },
           license: 'MIT'
-        }
+        })
       });
 
       const result = await fetchRegistryData('lodash', '4.17.21');
       expect(result).toEqual({ integrity: 'sha512-abc', license: 'MIT' });
-      expect(axios.get).toHaveBeenCalledWith(
+      expect(global.fetch).toHaveBeenCalledWith(
         'https://registry.npmjs.org/lodash/4.17.21',
-        expect.objectContaining({ timeout: 10000 })
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
 
     it('should handle scoped packages', async () => {
-      axios.get.mockResolvedValue({ status: 200, data: { dist: {}, license: 'MIT' } });
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ dist: {}, license: 'MIT' })
+      });
       await fetchRegistryData('@types/node', '20.0.0');
-      expect(axios.get).toHaveBeenCalledWith(
+      expect(global.fetch).toHaveBeenCalledWith(
         'https://registry.npmjs.org/@types%2fnode/20.0.0',
         expect.any(Object)
       );
     });
 
     it('should retry on 429', async () => {
-      axios.get
-        .mockRejectedValueOnce({ response: { status: 429 } })
-        .mockResolvedValueOnce({ status: 200, data: { dist: { integrity: 'sha512-abc' } } });
+      global.fetch
+        .mockResolvedValueOnce({ status: 429 })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ dist: { integrity: 'sha512-abc' } })
+        });
 
       // We use fake timers to handle the retry delay
       vi.useFakeTimers();
@@ -56,13 +65,13 @@ describe('Enrichment Providers', () => {
       const result = await promise;
       
       expect(result.integrity).toBe('sha512-abc');
-      expect(axios.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
       
       vi.useRealTimers();
     });
 
     it('should return nulls on 404', async () => {
-      axios.get.mockRejectedValue({ response: { status: 404 } });
+      global.fetch.mockResolvedValue({ ok: false, status: 404 });
       const result = await fetchRegistryData('non-existent', '1.0.0');
       expect(result).toEqual({ integrity: null, license: null });
     });

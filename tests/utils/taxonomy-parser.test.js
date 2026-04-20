@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
 import fs from 'fs/promises';
 import { parseTaxonomy, fetchTaxonomy, getAllowedProperties } from '../../src/utils/taxonomy-parser.js';
 
-vi.mock('axios');
 vi.mock('fs/promises');
+
+global.fetch = vi.fn();
 
 describe('Taxonomy Parser', () => {
   beforeEach(() => {
@@ -43,7 +43,10 @@ describe('Taxonomy Parser', () => {
   describe('fetchTaxonomy', () => {
     it('should fetch and update cache', async () => {
       const markdown = `| **\`bsi:fetched\`** |`;
-      axios.get.mockResolvedValue({ status: 200, data: markdown });
+      global.fetch.mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(markdown)
+      });
       fs.writeFile.mockResolvedValue();
       fs.mkdir.mockResolvedValue();
 
@@ -53,7 +56,7 @@ describe('Taxonomy Parser', () => {
     });
 
     it('should return null on fetch failure', async () => {
-      axios.get.mockRejectedValue(new Error('Network error'));
+      global.fetch.mockRejectedValue(new Error('Network error'));
       const result = await fetchTaxonomy();
       expect(result).toBeNull();
     });
@@ -61,20 +64,44 @@ describe('Taxonomy Parser', () => {
 
   describe('getAllowedProperties', () => {
     it('should return remote properties if fetch succeeds', async () => {
-      axios.get.mockResolvedValue({ status: 200, data: '| **\`bsi:remote\`** |' });
+      global.fetch.mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('| **\`bsi:remote\`** |')
+      });
       const result = await getAllowedProperties();
-      expect(result).toEqual(['bsi:remote']);
+      expect(result).toContain('bsi:remote');
+      expect(result).toContain('bsi:hash-source'); // From defaults
     });
 
     it('should return cached properties if fetch fails', async () => {
-      axios.get.mockRejectedValue(new Error('Network error'));
-      fs.readFile.mockResolvedValue(JSON.stringify(['bsi:cached']));
+      global.fetch.mockRejectedValue(new Error('Network error'));
+      fs.readFile.mockResolvedValue(JSON.stringify({
+        last_updated: Date.now(),
+        properties: ['bsi:cached']
+      }));
       const result = await getAllowedProperties();
-      expect(result).toEqual(['bsi:cached']);
+      expect(result).toContain('bsi:cached');
+    });
+
+    it('should fetch from remote if cache is expired', async () => {
+      const expiredTime = Date.now() - (25 * 60 * 60 * 1000); // 25 hours ago
+      fs.readFile.mockResolvedValue(JSON.stringify({
+        last_updated: expiredTime,
+        properties: ['bsi:old']
+      }));
+      global.fetch.mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('| **\`bsi:new\`** |')
+      });
+      
+      const result = await getAllowedProperties();
+      
+      expect(global.fetch).toHaveBeenCalled();
+      expect(result).toContain('bsi:new');
     });
 
     it('should return default properties if fetch and cache fail', async () => {
-      axios.get.mockRejectedValue(new Error('Network error'));
+      global.fetch.mockRejectedValue(new Error('Network error'));
       fs.readFile.mockRejectedValue(new Error('File missing'));
       const result = await getAllowedProperties();
       expect(result).toContain('bsi:compliance:requirements');

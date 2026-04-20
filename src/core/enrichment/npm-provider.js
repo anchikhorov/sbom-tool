@@ -1,13 +1,25 @@
-import axios from 'axios';
-
 /**
- * Internal helper for axios GET with retry on 429.
+ * Internal helper for fetch GET with retry on 429.
  */
 async function getWithRetry(url, options = {}, retries = 2, delay = 1000) {
   try {
-    return await axios.get(url, options);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(url, { 
+      ...options,
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+
+    if (response.status === 429 && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return getWithRetry(url, options, retries - 1, delay * 2);
+    }
+    
+    return response;
   } catch (error) {
-    if (retries > 0 && error.response?.status === 429) {
+    if (retries > 0 && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
       await new Promise(resolve => setTimeout(resolve, delay));
       return getWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -28,10 +40,10 @@ export async function fetchRegistryData(name, version) {
   const url = `https://registry.npmjs.org/${encodedName}/${version}`;
   
   try {
-    const response = await getWithRetry(url, { timeout: 10000 });
+    const response = await getWithRetry(url);
     
-    if (response.status === 200 && response.data) {
-      const data = response.data;
+    if (response.ok) {
+      const data = await response.json();
       
       const integrity = data.dist?.integrity || null;
       let license = null;
@@ -47,13 +59,12 @@ export async function fetchRegistryData(name, version) {
       }
 
       return { integrity, license };
+    } else if (response.status === 404) {
+      return { integrity: null, license: null };
+    } else {
+      console.warn(`[NPM Provider] Failed to fetch ${name}@${version}: Status ${response.status}`);
     }
   } catch (error) {
-    // 404 is expected for some private or missing packages
-    if (error.response?.status === 404) {
-      return { integrity: null, license: null };
-    }
-    
     console.warn(`[NPM Provider] Failed to fetch ${name}@${version}: ${error.message}`);
   }
   

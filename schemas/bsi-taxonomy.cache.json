@@ -1,0 +1,11 @@
+{
+  "last_updated": 1776689876925,
+  "properties": [
+    "bsi:component",
+    "bsi:component:executable",
+    "bsi:component:archive",
+    "bsi:component:structured",
+    "bsi:component:filename",
+    "bsi:component:effectiveLicence"
+  ]
+}

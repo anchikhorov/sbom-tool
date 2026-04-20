@@ -1,179 +1,83 @@
-# generate-sbom
+# SBOM Tool (BSI TR-03183-2)
 
-A Node.js script for generating SBOMs in **CycloneDX 1.6** format, compliant with **BSI TR-03183-2 v2.1.0** (Section 5) requirements.
+An enterprise-grade CLI tool for generating, enriching, and validating Software Bill of Materials (SBOM) according to the **BSI TR-03183-2** technical taxonomy and **CycloneDX 1.6** standards.
 
-Tool: [`@cyclonedx/cdxgen`](https://github.com/CycloneDX/cdxgen) — installed automatically.
+## ⚠️ Disclaimer
 
----
-
-## CycloneDX 1.6 Validation
-
-The generated SBOM passes strict validation:
-
-```bash
-cyclonedx-cli validate --input-file ./output.json --input-format json --input-version v1_6 --fail-on-errors
-# Validating JSON BOM...
-# BOM validated successfully.
+```text
+******************************************************************
+!!! ATTENTION: TECHNICAL TAXONOMY VALIDATION ONLY!!!
+This tool ONLY checks the JSON structure and field format
+for compliance with BSI TR-03183-2 requirements.
+1. This is NOT a security audit or compliance certification.
+2. The tool does NOT verify the accuracy or completeness of the data.
+3. A successful validation does NOT guarantee legal compliance.
+4. Provided "AS IS" without any obligations.
+****************************************************************
 ```
 
-### CycloneDX 1.6 Schema Fixes
+## Features
 
-The script automatically fixes incompatibilities between cdxgen output and the strict CycloneDX 1.6 schema:
+- **High-Performance Generation**: Generates CycloneDX 1.6 SBOMs using `cdxgen`.
+- **BSI Attribute Mapping**: Automatically enriches components with BSI-required properties (taxonomy, filenames, executable/archive classification, etc.).
+- **Smart Enrichment**:
+  - Prioritizes local `node_modules` and lockfile data to minimize network requests.
+  - Falls back to NPM Registry for missing metadata with built-in retry and timeout safety.
+  - Handles complex license expressions (e.g., `MIT OR Apache-2.0`) correctly for BSI validation.
+- **Strict Validation**: Validates output against both the CycloneDX 1.6 JSON Schema and specific BSI TR-03183-2 structural rules.
+- **Isolated Execution**: Performs manifest-only analysis in temporary workspaces to avoid side effects.
 
-| Issue | Fix |
-|-------|-----|
-| `metadata.tools` — incompatible oneOf format | Removed |
-| `metadata.lifecycles` — strict validation | Removed |
-| `annotations` — requires organization/individual/service | Removed |
-| `metadata.manufacturer` — array instead of object | Converted to object |
-| `manufacturer.url` — string instead of array | Converted to array |
-| `compositions` — uses `ref` instead of `assemblies` | Fixed to `assemblies` |
-| `evidence.identity` — array instead of object | Converted to object (first element) |
-| `hash.content` — invalid format (NOASSERTION) | Invalid hashes removed |
-| `externalReferences[distribution]` — missing URL | URL added based on purl |
+## Installation
 
----
+### Prerequisites
+- Node.js (v20+)
+- npm
 
-## Requirements
+### Setup
+```bash
+# Install dependencies
+npm install
 
-- Node.js 18+
-- npm (for cdxgen installation)
-- (optional) `cyclonedx-cli` for validation
-
----
+# Link for global CLI use
+npm link
+```
 
 ## Usage
 
+### Generate an SBOM
+Generates and enriches an SBOM for a project directory.
 ```bash
-node generate-sbom.mjs <project-path> [output.json]
+sbom-tool generate <path-to-project> [--output <file-path>]
 ```
 
+### Validate an SBOM
+Performs technical taxonomy validation on an existing SBOM file.
 ```bash
-# Basic usage
-node generate-sbom.mjs ~/projects/my-app
-
-# With explicit output filename
-node generate-sbom.mjs ~/projects/my-app ./sbom/my-app-bom.json
-
-# With SBOM creator specified (§5.2.1 — required field)
-SBOM_CREATOR_EMAIL=dev@company.com node generate-sbom.mjs ~/projects/my-app
+sbom-tool validate <path-to-sbom.json>
 ```
 
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SBOM_CREATOR_EMAIL` | `""` | SBOM creator email (preferred per BSI §5.2.1) |
-| `SBOM_CREATOR_URL` | `https://example.com` | URL fallback if email unavailable |
-
----
-
-## What the Script Does
-
-### Step 1 — Project Isolation
-Copies project to `/tmp/<name>-sbom-isolated`, excluding `node_modules`, `.git`, `build`, `dist`, `coverage`.
-
-### Step 2 — Install cdxgen
-Checks for `cdxgen` in `~/.local/bin` or `PATH`. If not found — installs via `npm install -g @cyclonedx/cdxgen`.
-
-### Step 3 — Generate Raw SBOM
-Runs `cdxgen` with flags `--spec-version 1.6 --validate`.
-cdxgen automatically detects ecosystem from `package.json`, `pom.xml`, `requirements.txt`, etc.
-
-### Step 4 — Enrich for BSI TR-03183-2 §5
-Post-processing adds and normalizes fields according to regulatory requirements.
-
----
-
-## BSI TR-03183-2 Section 5 Field Coverage
-
-### Required Fields for SBOM (§5.2.1)
-
-| BSI Field | CycloneDX Field |
-|-----------|-----------------|
-| Creator of the SBOM | `metadata.manufacturer[].contact.email` or `.url` |
-| Timestamp | `metadata.timestamp` (UTC, ISO 8601) |
-
-### Required Fields for Components (§5.2.2)
-
-| BSI Field | CycloneDX Field |
-|-----------|-----------------|
-| Component creator | `components[].manufacturer[].url` or `.contact.email` |
-| Component name | `components[].name` |
-| Component version | `components[].version` |
-| Filename of the component | `components[].properties[bsi:component:filename]` |
-| Dependencies on other components | `dependencies[]` + `compositions[].aggregate` |
-| Distribution licences | `components[].licenses[acknowledgement=concluded]` |
-| Hash value (SHA-512, deployable) | `components[].externalReferences[distribution].hashes[SHA-512]` |
-| Executable property | `components[].properties[bsi:component:executable]` |
-| Archive property | `components[].properties[bsi:component:archive]` |
-| Structured property | `components[].properties[bsi:component:structured]` |
-
-### Additional Fields (§5.2.3 / §5.2.4)
-
-| BSI Field | CycloneDX Field |
-|-----------|-----------------|
-| SBOM-URI | `serialNumber` (urn:uuid:...) |
-| Source code URI | `externalReferences[source-distribution].url` |
-| URI of deployable component | `externalReferences[distribution].url` |
-| Other unique identifiers | `purl`, `cpe`, `swid` |
-| Original licences | `licenses[acknowledgement=declared]` |
-
-### Optional Fields (§5.2.5)
-
-| BSI Field | CycloneDX Field |
-|-----------|-----------------|
-| URL security.txt | `externalReferences[rfc-9116].url` |
-
----
-
-## Output
-
-```
-/tmp/<project-name>-sbom-isolated/  ← isolated copy
-<output>.json                       ← final SBOM (default: next to invocation)
-```
-
----
-
-## Manual Review Required After Generation
-
-1. **Missing SHA-512 hashes** — cdxgen doesn't always have access to build artifacts.
-   Add real SHA-512 values from CI pipeline (after `npm pack` / `mvn package`).
-
-   > Note: Hashes with invalid format (e.g., `NOASSERTION`) are automatically removed to comply with CycloneDX 1.6 schema.
-
-2. **`compositions.aggregate = "incomplete"`** — conservative default value.
-   After verifying dependency graph completeness — change to `"complete"`.
-
-3. **`SBOM_CREATOR_EMAIL`** — required field per BSI §5.2.1.
-   Without it, a URL placeholder is used.
-
-4. **`manufacturer.name = "NOASSERTION"`** — for components without known homepage.
-   Replace with real URL or author email.
-
----
-
-## ES Module
-
-The script uses `import` and top-level `await`.
-Save as `.mjs` or add `"type": "module"` to `package.json`.
-
----
-
-## Installing cyclonedx-cli (for validation)
-
+### Audit an SBOM
+Audits an SBOM for BSI compliance gaps and generates detailed reports.
 ```bash
-# macOS
-brew install cyclonedx/cyclonedx/cyclonedx-cli
-
-# Linux (download binary)
-curl -L https://github.com/CycloneDX/cyclonedx-cli/releases/latest/download/cyclonedx-linux-x64 -o cyclonedx-cli
-chmod +x cyclonedx-cli
-sudo mv cyclonedx-cli /usr/local/bin/
-
-# Or via .NET
-dotnet tool install --global CycloneDX.CLI
+sbom-tool audit <path-to-sbom.json> [--output-dir <directory>] [--format <markdown|json|both>]
 ```
+
+## Configuration
+
+The tool automatically looks for an `sbom.config.json` in the current working directory. You can also use environment variables for CI/CD flexibility:
+- `SBOM_CREATOR_EMAIL`: Default email for the SBOM manufacturer.
+- `SBOM_CREATOR_URL`: Default URL for the SBOM manufacturer.
+
+## Technical Details
+
+### Enrichment Tiers
+1. **Existing Data**: Uses data already present in the raw SBOM (extracted from lockfiles).
+2. **Local Provider**: Reads `package.json` from `node_modules`.
+3. **Registry Provider**: Fetches authoritative metadata from the NPM Registry (only if needed).
+4. **Calculated**: Generates SHA-512 hashes for local components.
+
+### Performance
+For large projects (2,000+ components), the tool uses parallel batch processing to ensure fast execution while respecting registry rate limits.
+
+## License
+Provided "AS IS" for technical taxonomy validation purposes.

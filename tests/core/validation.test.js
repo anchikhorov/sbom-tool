@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { validateSbom } from '../../src/core/validation.js';
+
+vi.mock('../../src/utils/taxonomy-parser.js', () => ({
+  getAllowedProperties: vi.fn().mockResolvedValue([
+    'bsi:component:filename',
+    'bsi:component:executable',
+    'bsi:hash-source'
+  ])
+}));
 
 describe('SBOM Validation', () => {
   const validSbom = {
@@ -80,5 +88,13 @@ describe('SBOM Validation', () => {
     const result = await validateSbom(invalidSbom);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.includes('top-level role'))).toBe(true);
+  });
+
+  it('should fail if unauthorized bsi property is present', async () => {
+    const invalidSbom = JSON.parse(JSON.stringify(validSbom));
+    invalidSbom.components[0].properties.push({ name: 'bsi:invalid:prop', value: 'value' });
+    const result = await validateSbom(invalidSbom);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('not part of the allowed BSI property taxonomy'))).toBe(true);
   });
 });

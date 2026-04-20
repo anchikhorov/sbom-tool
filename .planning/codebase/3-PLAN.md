@@ -15,12 +15,14 @@ Implement the `audit` command and modular rules engine to facilitate manual revi
     - Implement rules for Aggregate Status and BSI compliance gaps.
     - Comprehensive unit tests for all audit rules.
 
-### Wave 2: Reporting & CLI Integration (Parallel)
+### Wave 2: Reporting (Parallelizable with Wave 1 foundation)
 - **Plan 03-02: Report Generators**
     - Implement `src/utils/reports.js` using native template literals.
     - Support Markdown format for human review (summary + findings table).
     - Support JSON format for CI/CD integration.
     - Unit tests for report consistency.
+
+### Wave 3: CLI Integration
 - **Plan 03-03: CLI Command & Integration**
     - Implement `audit` command in `src/commands/audit.js` using `commander.js`.
     - Integrate existing structural validation (`src/core/validation.js`) as Phase 0.
@@ -38,6 +40,7 @@ All Phase 3 work must adhere to the validation strategy:
 - **Modular Rules:** Each audit rule is an independent function for easy extensibility.
 - **Integrated Validation:** The `audit` command automatically performs a schema validation check before running compliance rules.
 - **No-OPA:** Avoid heavy policy engines (like OPA/Rego) for this CLI tool to maintain portability.
+- **Stable Identifiers:** Use PURLs in audit findings to ensure location references remain valid across SBOM updates.
 
 ## Detailed Plan Files
 1. [03-01-PLAN.md](../phases/03-audit-workflow/03-01-PLAN.md)

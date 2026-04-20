@@ -31,15 +31,24 @@ export async function enrichComponent(comp, options = {}) {
   const purl = comp.purl ?? "";
   const isNpm = purl.startsWith("pkg:npm");
 
-  // ── Tiered Enrichment (Registry -> Local -> Git -> Calculated) ────────────
+  // ── Gather existing data to avoid redundant network calls ──────────────────
+  const existingSha512 = (comp.hashes ?? []).find(h => h.alg === "SHA-512")?.content;
+  const hasLicense = comp.licenses && comp.licenses.length > 0 && 
+                     (comp.licenses[0].expression || comp.licenses[0].license?.id || comp.licenses[0].license?.name);
+
+  // ── Tiered Enrichment (Local -> Registry -> Git -> Calculated) ────────────
+  let localData = { license: null };
   let registryData = { integrity: null, license: null };
-  if (isNpm && comp.name && comp.version) {
-    registryData = await fetchRegistryData(comp.name, comp.version);
+
+  // Tier 1: Local node_modules (Fastest)
+  if (!hasLicense && isNpm && comp.name) {
+    localData = await fetchLocalData(projectRoot, comp.name);
   }
 
-  let localData = { license: null };
-  if (!registryData.license && isNpm && comp.name) {
-    localData = await fetchLocalData(projectRoot, comp.name);
+  // Tier 2: Registry (Only if still missing critical data)
+  const needsRegistry = isNpm && comp.name && comp.version && (!existingSha512 || (!hasLicense && !localData.license));
+  if (needsRegistry) {
+    registryData = await fetchRegistryData(comp.name, comp.version);
   }
 
   // ── Filename (§5.2.2 "Filename of the component") ─────────────────────────
@@ -74,36 +83,26 @@ export async function enrichComponent(comp, options = {}) {
     if (foundLicense === "NOASSERTION") {
        comp.licenses = [{ license: { id: "NOASSERTION" } }];
     } else {
-       comp.licenses = [{ expression: foundLicense }];
+       // BSI: If it's an SPDX ID or a valid Expression (containing OR, AND, etc.), use 'expression'
+       // Regex handles single IDs and expressions with operators/parentheses
+       const isSpdxExpression = /^[a-zA-Z0-9.\- ]+$/.test(foundLicense) || 
+                                /[\(\)]| OR | AND | WITH /i.test(foundLicense) ||
+                                foundLicense.startsWith("LicenseRef-");
+
+       if (isSpdxExpression) {
+         // Remove parentheses if they wrap the whole thing, as validator prefers clean expressions
+         const cleanExpr = foundLicense.replace(/^\((.*)\)$/, '$1');
+         comp.licenses = [{ expression: cleanExpr }];
+       } else {
+         comp.licenses = [{ license: { name: foundLicense } }];
+       }
     }
     // BSI: component:effectiveLicence MUST occur exactly once per component
     setBsiProp("bsi:component:effectiveLicence", foundLicense);
-  } else if (!comp.licenses || comp.licenses.length === 0) {
-    comp.licenses = [
-      {
-        license: {
-          name: "LicenseRef-ROWE-Unknown",
-        },
-      },
-    ];
-    setBsiProp("bsi:component:effectiveLicence", "LicenseRef-ROWE-Unknown");
   } else {
-    // Clean up existing licenses
-    let effective = "NOASSERTION";
-    for (const lic of comp.licenses) {
-      if (lic.license) {
-        delete lic.license.acknowledgement;
-        // Fix names that should be IDs or expressions
-        if (lic.license.name === "NOASSERTION") {
-          delete lic.license.name;
-          lic.license.id = "NOASSERTION";
-        }
-        effective = lic.license.id || lic.license.name || effective;
-      } else if (lic.expression) {
-        effective = lic.expression;
-      }
-    }
-    setBsiProp("bsi:component:effectiveLicence", effective);
+    // Fallback if truly nothing found
+    comp.licenses = [{ expression: "LicenseRef-ROWE-Unknown" }];
+    setBsiProp("bsi:component:effectiveLicence", "LicenseRef-ROWE-Unknown");
   }
 
   // ── Hash SHA-512 of deployable form (§5.2.2) ──────────────────────────────
@@ -160,8 +159,8 @@ export async function enrichComponent(comp, options = {}) {
   if (!sha512Content && isNpm && comp.name) {
     const pkgPath = path.join(projectRoot, 'node_modules', comp.name, 'package.json');
     try {
-      sha512Content = await calculateSha512(pkgPath);
-      hashSource = 'calculated';
+      sha512Content = await calculateSha512(pkgPath, 2000); // 2s timeout for hash
+      if (sha512Content) hashSource = 'calculated';
     } catch {
       // Ignore calculation errors
     }
@@ -292,9 +291,13 @@ export async function enrichComponent(comp, options = {}) {
  * @returns {Promise<Object>} enriched SBOM object
  */
 export async function enrichSbom(sbom, options = {}) {
+  // CI/CD Auto-detection
+  const ciEmail = process.env.GITLAB_USER_EMAIL || (process.env.GITHUB_ACTOR ? `${process.env.GITHUB_ACTOR}@users.noreply.github.com` : null);
+  const ciUrl = process.env.CI_PROJECT_URL || (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}` : null);
+  
   const { 
-    creatorEmail = "Simon.Kaempflein@rowe.de", 
-    creatorUrl = "https://www.rowe.de/",
+    creatorEmail = process.env.SBOM_CREATOR_EMAIL || ciEmail || "user@example.com", 
+    creatorUrl = process.env.SBOM_CREATOR_URL || ciUrl || "https://www.example.com",
     projectRoot = process.cwd()
   } = options;
 
@@ -335,9 +338,20 @@ export async function enrichSbom(sbom, options = {}) {
 
   // Enrich all listed components
   if (Array.isArray(sbom.components)) {
-    for (let i = 0; i < sbom.components.length; i++) {
-      await enrichComponent(sbom.components[i], { projectRoot });
+    const total = sbom.components.length;
+    console.log(`[Enrichment] Processing ${total} components...`);
+    
+    // Process in batches of 20 to avoid rate limits and keep it fast
+    const batchSize = 20;
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = sbom.components.slice(i, i + batchSize);
+      await Promise.all(batch.map(comp => enrichComponent(comp, { projectRoot })));
+      
+      if (i > 0 && i % 100 === 0) {
+        process.stdout.write(`\r[Enrichment] Progress: ${i}/${total} components...`);
+      }
     }
+    process.stdout.write(`\r[Enrichment] Progress: ${total}/${total} components.\n`);
   }
 
   // ── Dependency graph completeness (§5.2.2 + §5.1) ────────────────────────────

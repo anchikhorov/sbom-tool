@@ -174,7 +174,7 @@ export async function auditAction(inputPath, options) {
 | A1 | `jsonpath` is allowed as a dependency. | Standard Stack | If not, manual traversal logic is required (medium effort). |
 | A2 | Template literals are sufficient for BSI report requirements. | Report Generation | If BSI requires a specific XML/PDF format, we need specialized exporters. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Rule Overlap:** Should `audit` report the same errors as `validate`?
    - *Recommendation:* Yes, but categorized differently. `validate` ensures it's a valid SBOM; `audit` ensures it's a *compliant* SBOM.

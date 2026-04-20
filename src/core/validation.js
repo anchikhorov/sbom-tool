@@ -4,6 +4,7 @@ import schema from '../../schemas/bom-1.6.schema.json' with { type: 'json' };
 import spdxSchema from '../../schemas/spdx.schema.json' with { type: 'json' };
 import jsfSchema from '../../schemas/jsf-0.82.schema.json' with { type: 'json' };
 import spdxLicenses from '../../schemas/spdx-licenses.json' with { type: 'json' };
+import { getAllowedProperties } from '../utils/taxonomy-parser.js';
 
 const ajv = new Ajv({ 
   allErrors: true, 
@@ -31,6 +32,7 @@ const validSpdxIds = new Set(spdxLicenses.licenses.map(l => l.licenseId));
  */
 export async function validateSbom(sbom) {
   const errors = [];
+  const allowedBsiProperties = new Set(await getAllowedProperties());
 
   // 1. Structural Validation
   const isStructureValid = validateStructure(sbom);
@@ -106,6 +108,13 @@ export async function validateSbom(sbom) {
       if (!hasExecutable) {
         errors.push(`[${componentId}]: Missing BSI property 'bsi:component:executable'.`);
       }
+
+      // Dynamic BSI Taxonomy Validation
+      properties.forEach(p => {
+        if (p.name.startsWith('bsi:') && !allowedBsiProperties.has(p.name)) {
+          errors.push(`[${componentId}]: Property "${p.name}" is not part of the allowed BSI property taxonomy.`);
+        }
+      });
     });
   }
 
