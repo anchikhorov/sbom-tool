@@ -355,6 +355,12 @@ export async function enrichSbom(sbom, options = {}) {
   }
 
   // ── Dependency graph completeness (§5.2.2 + §5.1) ────────────────────────────
+  // NOTE: Consistent with the system disclaimer, this step ensures compliance with
+  // the TECHNICAL TAXONOMY and JSON structure ONLY. It prevents BSI validation
+  // errors by generically registering all parsed CycloneDX 'components' into the graph.
+  // This tool does NOT verify the underlying accuracy or completeness of the data.
+  // True functional completeness rests entirely on the upstream generator utilizing
+  // highly accurate lockfiles (e.g., package-lock.json).
   if (!Array.isArray(sbom.dependencies)) sbom.dependencies = [];
 
   const depsIndex = new Set(sbom.dependencies.map((d) => d.ref));

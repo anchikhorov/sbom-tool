@@ -12,7 +12,7 @@ for compliance with BSI TR-03183-2 requirements.
 1. This is NOT a security audit or compliance certification.
 2. The tool does NOT verify the accuracy or completeness of the data.
 3. A successful validation does NOT guarantee legal compliance.
-4. Provided "AS IS" without any obligations.
+4. Provided "AS IS" without any obligations or warranty of any kind.
 ****************************************************************
 ```
 
@@ -24,7 +24,7 @@ for compliance with BSI TR-03183-2 requirements.
   - Prioritizes local `node_modules` and lockfile data to minimize network requests.
   - Falls back to NPM Registry for missing metadata with built-in retry and timeout safety.
   - Handles complex license expressions (e.g., `MIT OR Apache-2.0`) correctly for BSI validation.
-- **Strict Validation**: Validates output against both the CycloneDX 1.6 JSON Schema and specific BSI TR-03183-2 structural rules.
+- **Strict Structural Validation**: Validates output against both the CycloneDX 1.6 JSON Schema and specific BSI TR-03183-2 structural taxonomy rules. *Note: To satisfy structural graph requirements, the tool strictly registers all parsed components into the dependencies array, but true functional completeness of the dependency tree relies entirely on the upstream generator utilizing accurate lockfiles (like package-lock.json).*
 - **Isolated Execution**: Performs manifest-only analysis in temporary workspaces to avoid side effects.
 
 ## Installation
