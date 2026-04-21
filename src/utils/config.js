@@ -22,8 +22,8 @@ export function loadConfig(cwd = process.cwd()) {
   }
 
   return {
-    creatorEmail: process.env.SBOM_CREATOR_EMAIL || fileConfig.creatorEmail || "Simon.Kaempflein@rowe.de",
-    creatorUrl: process.env.SBOM_CREATOR_URL || fileConfig.creatorUrl || "https://www.rowe.de/",
+    creatorEmail: process.env.SBOM_CREATOR_EMAIL || fileConfig.creatorEmail || "user@example.com",
+    creatorUrl: process.env.SBOM_CREATOR_URL || fileConfig.creatorUrl || "https://example.com",
     exclude: fileConfig.exclude || ["node_modules", ".git", "build", "dist", "coverage", ".cache"],
     cdxgenVersion: process.env.CDXGEN_VERSION || fileConfig.cdxgenVersion || "11",
     useCyclonedxNpm: fileConfig.useCyclonedxNpm || false,
