@@ -111,7 +111,7 @@ describe('CLI Commands', () => {
 
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       await validateAction('bom.json');
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('✅ SBOM is valid'));
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('✅ SBOM technical taxonomy is valid'));
     });
 
     it('should report invalid SBOM errors', async () => {
@@ -129,7 +129,7 @@ describe('CLI Commands', () => {
 
       await validateAction('bom.json');
 
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('❌ SBOM validation failed'));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('❌ SBOM technical taxonomy validation failed'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

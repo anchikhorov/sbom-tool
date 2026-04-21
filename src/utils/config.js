@@ -1,7 +1,16 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 
 const DEFAULT_CONFIG_FILE = 'sbom.config.json';
+
+function getGitConfig(key, cwd) {
+  try {
+    return execSync(`git config ${key}`, { cwd, stdio: 'pipe', encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Load configuration from sbom.config.json and environment variables.
@@ -21,9 +30,19 @@ export function loadConfig(cwd = process.cwd()) {
     }
   }
 
+  // Auto-detect creator info from CI/CD or Git
+  const ciEmail = process.env.GITLAB_USER_EMAIL || (process.env.GITHUB_ACTOR ? `${process.env.GITHUB_ACTOR}@users.noreply.github.com` : null);
+  const ciUrl = process.env.CI_PROJECT_URL || (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}` : null);
+  
+  const gitEmail = getGitConfig('user.email', cwd);
+  const gitUrl = getGitConfig('--get remote.origin.url', cwd);
+
+  const fallbackEmail = ciEmail || gitEmail || "user@example.com";
+  const fallbackUrl = ciUrl || gitUrl || "https://example.com";
+
   return {
-    creatorEmail: process.env.SBOM_CREATOR_EMAIL || fileConfig.creatorEmail || "user@example.com",
-    creatorUrl: process.env.SBOM_CREATOR_URL || fileConfig.creatorUrl || "https://example.com",
+    creatorEmail: process.env.SBOM_CREATOR_EMAIL || fileConfig.creatorEmail || fallbackEmail,
+    creatorUrl: process.env.SBOM_CREATOR_URL || fileConfig.creatorUrl || fallbackUrl,
     exclude: fileConfig.exclude || ["node_modules", ".git", "build", "dist", "coverage", ".cache"],
     cdxgenVersion: process.env.CDXGEN_VERSION || fileConfig.cdxgenVersion || "11",
     useCyclonedxNpm: fileConfig.useCyclonedxNpm || false,

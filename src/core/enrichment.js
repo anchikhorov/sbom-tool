@@ -291,13 +291,9 @@ export async function enrichComponent(comp, options = {}) {
  * @returns {Promise<Object>} enriched SBOM object
  */
 export async function enrichSbom(sbom, options = {}) {
-  // CI/CD Auto-detection
-  const ciEmail = process.env.GITLAB_USER_EMAIL || (process.env.GITHUB_ACTOR ? `${process.env.GITHUB_ACTOR}@users.noreply.github.com` : null);
-  const ciUrl = process.env.CI_PROJECT_URL || (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}` : null);
-  
   const { 
-    creatorEmail = process.env.SBOM_CREATOR_EMAIL || ciEmail || "user@example.com", 
-    creatorUrl = process.env.SBOM_CREATOR_URL || ciUrl || "https://www.example.com",
+    creatorEmail = "user@example.com", 
+    creatorUrl = "https://example.com",
     projectRoot = process.cwd()
   } = options;
 

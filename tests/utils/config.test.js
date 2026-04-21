@@ -4,6 +4,13 @@ import { writeFileSync, unlinkSync, mkdirSync, rmdirSync, existsSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+vi.mock('node:child_process', () => ({
+  execSync: vi.fn(() => ({
+    toString: () => 'git-user@example.com',
+    trim: () => 'git-user@example.com'
+  }))
+}));
+
 describe('config utility', () => {
   const testDir = join(tmpdir(), 'sbom-test-config-' + Math.random().toString(36).substring(7));
   const configPath = join(testDir, 'sbom.config.json');
@@ -32,7 +39,7 @@ describe('config utility', () => {
     vi.stubEnv('CDXGEN_VERSION', '');
 
     const config = loadConfig(testDir);
-    expect(config.creatorEmail).toBe("Simon.Kaempflein@rowe.de");
+    expect(config.creatorEmail).toBe("git-user@example.com");
     expect(config.specVersion).toBe("1.6");
   });
 
