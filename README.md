@@ -69,7 +69,7 @@ The tool automatically looks for an `sbom.config.json` in the current working di
 ```json
 {
   "useCyclonedxNpm": false,
-  "creatorEmail": "[EMAIL_ADDRESS]",
+  "creatorEmail": "user@example.com",
   "creatorUrl": "https://www.example.com",
   "exclude": ["node_modules", ".git", "build", "dist", "coverage", ".cache"],
   "privatePackages": ["package-name"],
