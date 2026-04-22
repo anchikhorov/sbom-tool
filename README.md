@@ -146,3 +146,5 @@ Note that the **source code hash** is a separate *optional* field defined in BSI
 MIT License. See [LICENSE](LICENSE) for details.
 
 Provided "AS IS" for technical taxonomy validation purposes.
+
+**Disclaimer**: This SBOM is generated for internal engineering purposes. Third-party components are identified based on best-effort heuristic analysis. Accuracy is not guaranteed and must be verified by the legal department before regulatory submission.
