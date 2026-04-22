@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { enrichSbom } from '../core/enrichment.js';
 import { validateSbom } from '../core/validation.js';
 import { loadConfig } from '../utils/config.js';
-import { checkCdxgen, installCdxgen } from '../utils/preflight.js';
+import { checkCdxgen, installCdxgen, checkCyclonedxNpm, installCyclonedxNpm } from '../utils/preflight.js';
 import { prepareIsolation, cleanupIsolation } from '../utils/isolation.js';
 import { DISCLAIMER } from '../utils/disclaimer.js';
 
@@ -40,35 +40,71 @@ export async function generateAction(projectPath, options) {
   let isolatedPath = null;
 
   try {
-    // 1. Pre-flight: Ensure cdxgen
-    console.log("\n[1/5] Pre-flight: Checking cdxgen...");
-    let cdxgenPath = await checkCdxgen();
-    if (!cdxgenPath) {
-      console.log("cdxgen not found. Installing...");
-      const success = await installCdxgen();
-      if (!success) {
-        throw new Error("Failed to install cdxgen.");
+    let rawOutput;
+
+    if (config.useCyclonedxNpm) {
+      // 1. Pre-flight: Ensure cyclonedx-npm
+      console.log("\n[1/5] Pre-flight: Checking cyclonedx-npm...");
+      let npmPath = await checkCyclonedxNpm();
+      if (!npmPath) {
+        console.log("cyclonedx-npm not found. Installing...");
+        const success = await installCyclonedxNpm();
+        if (!success) {
+          throw new Error("Failed to install cyclonedx-npm.");
+        }
+        npmPath = await checkCyclonedxNpm();
       }
-      cdxgenPath = await checkCdxgen();
+      console.log(`Using cyclonedx-npm at: ${npmPath}`);
+
+      // 2. Isolation: Create manifest-only workspace
+      console.log(`\n[2/5] Isolation: Creating manifest-only workspace...`);
+      const isolation = prepareIsolation(absProjectPath);
+      isolatedPath = isolation.isolatedPath;
+      console.log(`Isolated workspace: ${isolatedPath}`);
+
+      // 3. Generation: Run cyclonedx-npm
+      rawOutput = join(isolatedPath, `${projectName}-bom-raw.json`);
+      console.log(`\n[3/5] Generation: Running cyclonedx-npm → ${rawOutput}`);
+      run(
+        `"${npmPath}" \\
+          --package-lock-only \\
+          --ignore-npm-errors \\
+          --mc-type application \\
+          --output-format JSON \\
+          --output-file "${rawOutput}"`,
+        { cwd: isolatedPath }
+      );
+    } else {
+      // 1. Pre-flight: Ensure cdxgen
+      console.log("\n[1/5] Pre-flight: Checking cdxgen...");
+      let cdxgenPath = await checkCdxgen();
+      if (!cdxgenPath) {
+        console.log("cdxgen not found. Installing...");
+        const success = await installCdxgen();
+        if (!success) {
+          throw new Error("Failed to install cdxgen.");
+        }
+        cdxgenPath = await checkCdxgen();
+      }
+      console.log(`Using cdxgen at: ${cdxgenPath}`);
+
+      // 2. Isolation: Create manifest-only workspace
+      console.log(`\n[2/5] Isolation: Creating manifest-only workspace...`);
+      const isolation = prepareIsolation(absProjectPath);
+      isolatedPath = isolation.isolatedPath;
+      console.log(`Isolated workspace: ${isolatedPath}`);
+
+      // 3. Generation: Run cdxgen
+      rawOutput = join(isolatedPath, `${projectName}-bom-raw.json`);
+      console.log(`\n[3/5] Generation: Running cdxgen → ${rawOutput}`);
+      run(
+        `"${cdxgenPath}" \\
+          --output "${rawOutput}" \\
+          --spec-version ${config.specVersion} \\
+          --validate`,
+        { cwd: isolatedPath }
+      );
     }
-    console.log(`Using cdxgen at: ${cdxgenPath}`);
-
-    // 2. Isolation: Create manifest-only workspace
-    console.log(`\n[2/5] Isolation: Creating manifest-only workspace...`);
-    const isolation = prepareIsolation(absProjectPath);
-    isolatedPath = isolation.isolatedPath;
-    console.log(`Isolated workspace: ${isolatedPath}`);
-
-    // 3. Generation: Run cdxgen
-    const rawOutput = join(isolatedPath, `${projectName}-bom-raw.json`);
-    console.log(`\n[3/5] Generation: Running cdxgen → ${rawOutput}`);
-    run(
-      `"${cdxgenPath}" \\
-        --output "${rawOutput}" \\
-        --spec-version ${config.specVersion} \\
-        --validate`,
-      { cwd: isolatedPath }
-    );
 
     if (!existsSync(rawOutput)) {
       throw new Error(`Generator did not produce output at ${rawOutput}`);
@@ -80,7 +116,8 @@ export async function generateAction(projectPath, options) {
     const enrichedSbom = await enrichSbom(rawSbom, {
       creatorEmail: config.creatorEmail,
       creatorUrl: config.creatorUrl,
-      projectRoot: absProjectPath
+      projectRoot: absProjectPath,
+      privatePackages: config.privatePackages
     });
 
     // 5. Validation: Double validation (Schema + BSI Rules)

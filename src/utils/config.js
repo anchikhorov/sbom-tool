@@ -44,6 +44,7 @@ export function loadConfig(cwd = process.cwd()) {
     creatorEmail: process.env.SBOM_CREATOR_EMAIL || fileConfig.creatorEmail || fallbackEmail,
     creatorUrl: process.env.SBOM_CREATOR_URL || fileConfig.creatorUrl || fallbackUrl,
     exclude: fileConfig.exclude || ["node_modules", ".git", "build", "dist", "coverage", ".cache"],
+    privatePackages: fileConfig.privatePackages || [],
     cdxgenVersion: process.env.CDXGEN_VERSION || fileConfig.cdxgenVersion || "11",
     useCyclonedxNpm: fileConfig.useCyclonedxNpm || false,
     specVersion: process.env.SBOM_SPEC_VERSION || fileConfig.specVersion || "1.6"

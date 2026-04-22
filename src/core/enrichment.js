@@ -4,7 +4,7 @@ import { classifyComponent } from "./classification.js";
 import { fetchRegistryData } from "./enrichment/npm-provider.js";
 import { fetchLocalData } from "./enrichment/local-provider.js";
 import { normalizeGitUrl } from "./enrichment/git-provider.js";
-import { calculateSha512 } from "../utils/hash.js";
+import { calculateSha512, calculateSha512FromUrl } from "../utils/hash.js";
 
 /**
  * Ensure a component has all BSI-required properties (§5.2.2).
@@ -31,6 +31,10 @@ export async function enrichComponent(comp, options = {}) {
   const purl = comp.purl ?? "";
   const isNpm = purl.startsWith("pkg:npm");
 
+  // cyclonedx-npm splits scoped packages: group="@material-ui", name="core"
+  // Reconstruct the full name for registry lookups
+  const fullName = comp.group ? `${comp.group}/${comp.name}` : comp.name;
+
   // ── Gather existing data to avoid redundant network calls ──────────────────
   const existingSha512 = (comp.hashes ?? []).find(h => h.alg === "SHA-512")?.content;
   const hasLicense = comp.licenses && comp.licenses.length > 0 && 
@@ -41,14 +45,14 @@ export async function enrichComponent(comp, options = {}) {
   let registryData = { integrity: null, license: null };
 
   // Tier 1: Local node_modules (Fastest)
-  if (!hasLicense && isNpm && comp.name) {
-    localData = await fetchLocalData(projectRoot, comp.name);
+  if (!hasLicense && isNpm && fullName) {
+    localData = await fetchLocalData(projectRoot, fullName);
   }
 
   // Tier 2: Registry (Only if still missing critical data)
-  const needsRegistry = isNpm && comp.name && comp.version && (!existingSha512 || (!hasLicense && !localData.license));
+  const needsRegistry = isNpm && fullName && comp.version && (!existingSha512 || (!hasLicense && !localData.license));
   if (needsRegistry) {
-    registryData = await fetchRegistryData(comp.name, comp.version);
+    registryData = await fetchRegistryData(fullName, comp.version);
   }
 
   // ── Filename (§5.2.2 "Filename of the component") ─────────────────────────
@@ -155,30 +159,7 @@ export async function enrichComponent(comp, options = {}) {
     }
   }
 
-  // Tier 4: Calculate SHA-512 if missing and we have a path (e.g., local package)
-  if (!sha512Content && isNpm && comp.name) {
-    const pkgPath = path.join(projectRoot, 'node_modules', comp.name, 'package.json');
-    try {
-      sha512Content = await calculateSha512(pkgPath, 2000); // 2s timeout for hash
-      if (sha512Content) hashSource = 'calculated';
-    } catch {
-      // Ignore calculation errors
-    }
-  }
-
-  if (hashSource === 'calculated') {
-    setBsiProp('bsi:hash-source', 'calculated');
-  }
-
-  // 2. Ensure it's in comp.hashes (required by validator)
-  if (sha512Content) {
-    if (!comp.hashes) comp.hashes = [];
-    if (!comp.hashes.some(h => h.alg === "SHA-512")) {
-      comp.hashes.push({ alg: "SHA-512", content: sha512Content });
-    }
-  }
-
-  // 3. Ensure it's in externalReferences[distribution] (required by BSI mapping)
+  // 2. Prepare externalReferences and distUrl BEFORE hash fallback so we can use it for remote hashing
   if (!comp.externalReferences) comp.externalReferences = [];
 
   // Tier 3: VCS / Source URL normalization
@@ -190,13 +171,72 @@ export async function enrichComponent(comp, options = {}) {
   }
 
   const purlPkg = (comp.purl ?? "").replace(/\?.*$/, "");  // strip qualifiers
-  const distUrl = browseUrl || (purlPkg.startsWith("pkg:npm")
-    ? `https://registry.npmjs.org/${comp.name}/-/${comp.name}-${comp.version ?? "0.0.0"}.tgz`
-    : purlPkg.startsWith("pkg:maven")
-      ? `https://repo1.maven.org/maven2/${(comp.group ?? "").replace(/\./g, "/")}/${comp.name}/${comp.version ?? "0.0.0"}/${comp.name}-${comp.version ?? "0.0.0"}.jar`
-      : purlPkg.startsWith("pkg:pypi")
-        ? `https://pypi.org/project/${comp.name}/${comp.version ?? ""}/`
-        : "https://example.com/NOASSERTION");
+  const privatePackages = options.privatePackages || [];
+  const isPrivate = privatePackages.some(prefix => fullName?.startsWith(prefix));
+
+  // For scoped packages like @material-ui/core, the tarball filename uses only the unscoped name (core-4.12.4.tgz)
+  const unscopedName = fullName?.includes('/') ? fullName.split('/').pop() : fullName;
+
+  let distUrl = browseUrl;
+  if (!distUrl) {
+    if (isPrivate) {
+      distUrl = options.creatorUrl || "https://example.com/NOASSERTION";
+    } else {
+      distUrl = purlPkg.startsWith("pkg:npm")
+        ? `https://registry.npmjs.org/${fullName}/-/${unscopedName}-${comp.version ?? "0.0.0"}.tgz`
+        : purlPkg.startsWith("pkg:maven")
+          ? `https://repo1.maven.org/maven2/${(comp.group ?? "").replace(/\./g, "/")}/${comp.name}/${comp.version ?? "0.0.0"}/${comp.name}-${comp.version ?? "0.0.0"}.jar`
+          : purlPkg.startsWith("pkg:pypi")
+            ? `https://pypi.org/project/${comp.name}/${comp.version ?? ""}/`
+            : "https://example.com/NOASSERTION";
+    }
+  }
+
+  // Tier 4: Calculate SHA-512 from remote tarball if still missing
+  if (!sha512Content && isNpm && fullName && !isPrivate) {
+    // 4a: Try NPM registry tarball
+    const npmTarballUrl = `https://registry.npmjs.org/${fullName}/-/${unscopedName}-${comp.version ?? "0.0.0"}.tgz`;
+    try {
+      sha512Content = await calculateSha512FromUrl(npmTarballUrl, 10000);
+      if (sha512Content) hashSource = 'calculated';
+    } catch {
+      // Ignore download/hash errors
+    }
+
+    // 4b: Try GitHub tarball if VCS URL is available and NPM failed
+    if (!sha512Content && browseUrl && browseUrl.includes('github.com')) {
+      const ghTarballUrl = `${browseUrl}/archive/refs/tags/v${comp.version ?? "0.0.0"}.tar.gz`;
+      try {
+        sha512Content = await calculateSha512FromUrl(ghTarballUrl, 10000);
+        if (sha512Content) hashSource = 'calculated';
+      } catch {
+        // Ignore GitHub download errors
+      }
+    }
+
+    // 4c: Fallback to local node_modules
+    if (!sha512Content) {
+      const pkgPath = path.join(projectRoot, 'node_modules', fullName, 'package.json');
+      try {
+        sha512Content = await calculateSha512(pkgPath, 2000);
+        if (sha512Content) hashSource = 'calculated';
+      } catch {
+        // Ignore calculation errors
+      }
+    }
+  }
+
+  if (hashSource === 'calculated') {
+    setBsiProp('bsi:hash-source', 'calculated');
+  }
+
+  // Ensure hash is in comp.hashes (required by validator)
+  if (sha512Content) {
+    if (!comp.hashes) comp.hashes = [];
+    if (!comp.hashes.some(h => h.alg === "SHA-512")) {
+      comp.hashes.push({ alg: "SHA-512", content: sha512Content });
+    }
+  }
 
   let distRef = comp.externalReferences.find((r) => r.type === "distribution");
   if (!distRef) {
@@ -231,13 +271,20 @@ export async function enrichComponent(comp, options = {}) {
   // Derive from purl homepage or leave as NOASSERTION placeholder.
   if (!comp.manufacturer || (Array.isArray(comp.manufacturer) && comp.manufacturer.length === 0) || typeof comp.manufacturer !== 'object') {
     const purlPkg = (comp.purl ?? "").replace(/\?.*$/, "");  // strip qualifiers
-    const repoHost = purlPkg.startsWith("pkg:npm")
-      ? `https://www.npmjs.com/package/${comp.name}`
-      : purlPkg.startsWith("pkg:maven")
-        ? `https://mvnrepository.com/artifact/${comp.group ?? ""}/${comp.name}`
-        : purlPkg.startsWith("pkg:pypi")
-          ? `https://pypi.org/project/${comp.name}`
-          : null;
+    const isPrivateMfr = privatePackages.some(prefix => fullName?.startsWith(prefix));
+
+    let repoHost = null;
+    if (isPrivateMfr) {
+      repoHost = options.creatorUrl || "https://example.com/NOASSERTION";
+    } else {
+      repoHost = purlPkg.startsWith("pkg:npm")
+        ? `https://www.npmjs.com/package/${fullName}`
+        : purlPkg.startsWith("pkg:maven")
+          ? `https://mvnrepository.com/artifact/${comp.group ?? ""}/${comp.name}`
+          : purlPkg.startsWith("pkg:pypi")
+            ? `https://pypi.org/project/${comp.name}`
+            : null;
+    }
 
     if (repoHost) {
       comp.manufacturer = { url: [repoHost] };  // CycloneDX 1.6: url must be array
@@ -294,7 +341,8 @@ export async function enrichSbom(sbom, options = {}) {
   const { 
     creatorEmail = "user@example.com", 
     creatorUrl = "https://example.com",
-    projectRoot = process.cwd()
+    projectRoot = process.cwd(),
+    privatePackages = []
   } = options;
 
   // ── 5.2.1 Required fields for the SBOM itself ────────────────────────────────
@@ -329,7 +377,7 @@ export async function enrichSbom(sbom, options = {}) {
 
   // Enrich primary component (metadata.component)
   if (sbom.metadata?.component) {
-    await enrichComponent(sbom.metadata.component, { projectRoot });
+    await enrichComponent(sbom.metadata.component, { projectRoot, creatorUrl, privatePackages });
   }
 
   // Enrich all listed components
@@ -341,7 +389,7 @@ export async function enrichSbom(sbom, options = {}) {
     const batchSize = 20;
     for (let i = 0; i < total; i += batchSize) {
       const batch = sbom.components.slice(i, i + batchSize);
-      await Promise.all(batch.map(comp => enrichComponent(comp, { projectRoot })));
+      await Promise.all(batch.map(comp => enrichComponent(comp, { projectRoot, creatorUrl, privatePackages })));
       
       if (i > 0 && i % 100 === 0) {
         process.stdout.write(`\r[Enrichment] Progress: ${i}/${total} components...`);

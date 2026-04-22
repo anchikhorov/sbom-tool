@@ -1,4 +1,17 @@
 {
-  "creatorEmail": "user@example.com",
-  "creatorUrl": "https://www.example.com"
+  "useCyclonedxNpm": false,
+  "creatorEmail": "[EMAIL_ADDRESS]",
+  "creatorUrl": "https://www.example.com",
+  "exclude": [
+    "./node_modules",
+    "./.git",
+    "./build",
+    "./dist",
+    "./coverage",
+    "./.cache",
+    "./**/*"  
+  ],
+  "privatePackages": [],
+  "cdxgenVersion": "11",
+  "specVersion": "1.6"
 }

@@ -64,9 +64,28 @@ sbom-tool audit <path-to-sbom.json> [--output-dir <directory>] [--format <markdo
 
 ## Configuration
 
-The tool automatically looks for an `sbom.config.json` in the current working directory. You can also use environment variables for CI/CD flexibility:
-- `SBOM_CREATOR_EMAIL`: Default email for the SBOM manufacturer.
-- `SBOM_CREATOR_URL`: Default URL for the SBOM manufacturer.
+The tool automatically looks for an `sbom.config.json` in the current working directory. You can configure the following options:
+
+```json
+{
+  "useCyclonedxNpm": false,
+  "creatorEmail": "[EMAIL_ADDRESS]",
+  "creatorUrl": "https://www.example.com",
+  "exclude": ["node_modules", ".git", "build", "dist", "coverage", ".cache"],
+  "privatePackages": ["package-name"],
+  "cdxgenVersion": "11",
+  "specVersion": "1.6"
+}
+```
+
+### Configuration Options
+- `useCyclonedxNpm` (boolean): Set to `true` to use `@cyclonedx/cyclonedx-npm` instead of `cdxgen` for generating the initial SBOM.
+- `creatorEmail` (string): Email for the SBOM manufacturer (can be overridden by `SBOM_CREATOR_EMAIL` env var or Git config).
+- `creatorUrl` (string): URL for the SBOM manufacturer (can be overridden by `SBOM_CREATOR_URL` env var or Git remote origin).
+- `exclude` (array): Directories to exclude during generation (used primarily by `cdxgen`).
+- `privatePackages` (array): List of prefixes for internal packages. Packages matching these prefixes will use the `creatorUrl` instead of public npm registry URLs.
+- `cdxgenVersion` (string): Target `cdxgen` major version (default: `"11"`, override with `CDXGEN_VERSION`).
+- `specVersion` (string): Target CycloneDX spec version (default: `"1.6"`, override with `SBOM_SPEC_VERSION`).
 
 ## Technical Details
 

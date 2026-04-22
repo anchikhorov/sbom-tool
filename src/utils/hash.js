@@ -40,3 +40,36 @@ export async function calculateSha512(filePath, timeoutMs = 5000) {
     }
   });
 }
+
+/**
+ * Calculate SHA-512 hash from a remote URL.
+ * @param {string} url The remote URL to download.
+ * @param {number} timeoutMs Optional timeout in milliseconds.
+ * @returns {Promise<string|null>} Lowercase hex string of the SHA-512 hash, or null if it fails/times out.
+ */
+export async function calculateSha512FromUrl(url, timeoutMs = 10000) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok || !response.body) {
+      clearTimeout(timeout);
+      return null;
+    }
+
+    const hash = createHash('sha512');
+    
+    // Convert Web ReadableStream to Node Readable stream for pipeline
+    const { Readable } = await import('node:stream');
+    const nodeStream = Readable.fromWeb(response.body);
+
+    await pipeline(nodeStream, hash);
+    clearTimeout(timeout);
+    
+    return hash.digest('hex').toLowerCase();
+  } catch (err) {
+    return null;
+  }
+}
+
