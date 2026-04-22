@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { runAudit } from '../core/audit.js';
 import { validateSbom } from '../core/validation.js';
 import { generateMarkdownReport, generateJSONReport } from '../utils/reports.js';
+import { loadConfig } from '../utils/config.js';
 
 /**
  * CLI action for auditing an SBOM file.
@@ -24,7 +25,11 @@ export async function auditAction(inputPath, options) {
     process.exit(1);
   }
 
-  const outputDir = resolve(options.outputDir || './audit-reports/');
+  const config = loadConfig();
+  // Default audit-reports dir goes to the parent of the tool's install directory,
+  // alongside the generate-sbom/ folder rather than inside it.
+  const defaultOutputDir = resolve(dirname(config.configDir), 'audit-reports');
+  const outputDir = resolve(options.outputDir || defaultOutputDir);
   mkdirSync(outputDir, { recursive: true });
 
   const findings = [];

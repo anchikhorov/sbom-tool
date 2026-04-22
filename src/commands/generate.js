@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve, basename, join } from 'node:path';
+import { resolve, basename, dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { enrichSbom } from '../core/enrichment.js';
@@ -36,7 +36,12 @@ export async function generateAction(projectPath, options) {
   }
 
   const projectName = basename(absProjectPath);
-  const outputFile = resolve(options.output || `${projectName}-bom.json`);
+  // Default output goes to the parent of the tool's install directory
+  // (i.e. parent of where sbom.config.json lives), so SBOMs land alongside
+  // the generate-sbom/ folder rather than inside it.
+  const outputFile = options.output
+    ? resolve(options.output)
+    : resolve(dirname(config.configDir), `${projectName}-bom.json`);
   let isolatedPath = null;
 
   try {
@@ -119,6 +124,114 @@ export async function generateAction(projectPath, options) {
       projectRoot: absProjectPath,
       privatePackages: config.privatePackages
     });
+    // ── 4b. Completeness Check (BSI §5.2.2 compositions) ────────────────────────
+    // BSI TR-03183-2 requires a `compositions` block declaring whether the SBOM
+    // is "complete" or "incomplete". Instead of blindly hardcoding "incomplete",
+    // we perform an automated set-containment check:
+    //
+    //   1. Run `npm ls --all --parseable --package-lock-only` to get every
+    //      package the lockfile knows about (works without node_modules).
+    //   2. Extract unique package names (deduplicating hoisted paths).
+    //   3. Build a set of all component names present in the SBOM.
+    //   4. Check that EVERY lockfile package exists in the SBOM set.
+    //
+    // "complete" = 0 missing packages (100% coverage).
+    // The SBOM is allowed to contain MORE components than the lockfile
+    // (e.g., bundled deps, optional platform deps resolved by cdxgen).
+    //
+    // We check production deps first (--omit=dev), since most generators
+    // exclude devDependencies. If all production deps are found → "complete".
+    // If any are missing, we report them by name for easy debugging.
+    // ────────────────────────────────────────────────────────────────────────────
+    console.log(`\n[4b/5] Completeness: Verifying dependency coverage...`);
+    try {
+      // Helper: run npm ls with fallback (--package-lock-only first, then regular)
+      const runNpmLs = (extraArgs = []) => {
+        const result = spawnSync('npm', ['ls', '--all', '--parseable', '--package-lock-only', ...extraArgs], {
+          cwd: absProjectPath,
+          stdio: 'pipe',
+          encoding: 'utf8',
+          timeout: 30000
+        });
+        if (!result.stdout || result.stdout.trim().split('\n').filter(Boolean).length <= 1) {
+          // Fallback: try without --package-lock-only (needs node_modules)
+          return spawnSync('npm', ['ls', '--all', '--parseable', ...extraArgs], {
+            cwd: absProjectPath,
+            stdio: 'pipe',
+            encoding: 'utf8',
+            timeout: 30000
+          });
+        }
+        return result;
+      };
+
+      // Extract unique package names from npm ls parseable output.
+      // npm ls --parseable outputs one path per line like:
+      //   /project/node_modules/@scope/pkg
+      //   /project/node_modules/pkg
+      // We extract the last node_modules/<name> segment and deduplicate.
+      const extractUniquePackages = (stdout) => {
+        if (!stdout) return new Set();
+        const lines = stdout.trim().split('\n').filter(Boolean);
+        const pkgNames = new Set();
+        for (const line of lines) {
+          const match = line.match(/node_modules\/(@[^/]+\/[^/]+|[^/]+)$/);
+          if (match) pkgNames.add(match[1]);
+        }
+        return pkgNames;
+      };
+
+      // Build set of all package names in the SBOM (handling group/name split
+      // from cyclonedx-npm where scoped packages have separate group and name)
+      const sbomPackages = new Set();
+      for (const comp of (enrichedSbom.components ?? [])) {
+        const fullName = comp.group ? `${comp.group}/${comp.name}` : comp.name;
+        if (fullName) sbomPackages.add(fullName);
+      }
+
+      // Get lockfile packages: production-only and all (including devDependencies)
+      const prodResult = runNpmLs(['--omit=dev']);
+      const allResult = runNpmLs();
+      const prodPkgs = extractUniquePackages(prodResult.stdout);
+      const allPkgs = extractUniquePackages(allResult.stdout);
+
+      // Set containment check: find packages present in lockfile but missing from SBOM
+      const prodMissing = [...prodPkgs].filter(pkg => !sbomPackages.has(pkg));
+      const allMissing = [...allPkgs].filter(pkg => !sbomPackages.has(pkg));
+
+      // If all production deps are covered, use that as the reference (most
+      // generators exclude devDependencies, so this is the expected baseline)
+      const isProductionComplete = prodMissing.length === 0;
+      const refSet = isProductionComplete ? 'production' : 'all (incl. dev)';
+      const missing = isProductionComplete ? prodMissing : allMissing;
+
+      console.log(`  npm ls (prod):    ${prodPkgs.size} unique packages`);
+      console.log(`  npm ls (all):     ${allPkgs.size} unique packages`);
+      console.log(`  SBOM contains:    ${sbomPackages.size} unique components`);
+
+      if (missing.length === 0) {
+        // All lockfile packages found → mark composition as "complete"
+        console.log(`  ✅ All ${refSet} dependencies found in SBOM → marking as "complete"`);
+        if (Array.isArray(enrichedSbom.compositions)) {
+          for (const comp of enrichedSbom.compositions) {
+            if (comp.aggregate === 'incomplete') {
+              comp.aggregate = 'complete';
+            }
+          }
+        }
+      } else {
+        // Some packages missing → keep as "incomplete" and report which ones
+        console.log(`  ⚠️  ${missing.length} ${refSet} packages not found in SBOM → "incomplete"`);
+        if (missing.length <= 10) {
+          missing.forEach(pkg => console.log(`      - ${pkg}`));
+        } else {
+          missing.slice(0, 10).forEach(pkg => console.log(`      - ${pkg}`));
+          console.log(`      ... and ${missing.length - 10} more`);
+        }
+      }
+    } catch (err) {
+      console.warn(`  ⚠️  Could not verify completeness: ${err.message}`);
+    }
 
     // 5. Validation: Double validation (Schema + BSI Rules)
     console.log(`\n[5/5] Validation: Double validation (Schema + BSI Rules)...`);

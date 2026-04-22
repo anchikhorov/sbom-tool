@@ -47,6 +47,9 @@ export function loadConfig(cwd = process.cwd()) {
     privatePackages: fileConfig.privatePackages || [],
     cdxgenVersion: process.env.CDXGEN_VERSION || fileConfig.cdxgenVersion || "11",
     useCyclonedxNpm: fileConfig.useCyclonedxNpm || false,
-    specVersion: process.env.SBOM_SPEC_VERSION || fileConfig.specVersion || "1.6"
+    specVersion: process.env.SBOM_SPEC_VERSION || fileConfig.specVersion || "1.6",
+    // Directory where sbom.config.json was found (or cwd if not found)
+    // Used to resolve default output paths relative to the tool install location.
+    configDir: cwd
   };
 }

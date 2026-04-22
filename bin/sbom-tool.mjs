@@ -35,7 +35,7 @@ program
   .command('audit')
   .description('Audit an SBOM for BSI compliance and identify gaps')
   .argument('<path>', 'Path to the SBOM file')
-  .option('--output-dir <dir>', 'Directory to save audit reports', './audit-reports/')
+  .option('--output-dir <dir>', 'Directory to save audit reports')
   .option('--format <format>', 'Output format (markdown, json, both)', 'both')
   .action(auditAction);
 

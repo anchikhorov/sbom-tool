@@ -4,7 +4,7 @@ import { classifyComponent } from "./classification.js";
 import { fetchRegistryData } from "./enrichment/npm-provider.js";
 import { fetchLocalData } from "./enrichment/local-provider.js";
 import { normalizeGitUrl } from "./enrichment/git-provider.js";
-import { calculateSha512, calculateSha512FromUrl } from "../utils/hash.js";
+import { calculateSha512FromUrl } from "../utils/hash.js";
 
 /**
  * Ensure a component has all BSI-required properties (§5.2.2).
@@ -192,9 +192,12 @@ export async function enrichComponent(comp, options = {}) {
     }
   }
 
-  // Tier 4: Calculate SHA-512 from remote tarball if still missing
+  // Tier 4: Calculate SHA-512 from remote deployable tarball if still missing.
+  // BSI §5.2.2 requires the hash of the "deployed/deployable component
+  // (i.e. as a file on a mass storage device)". For npm packages, this is
+  // the .tgz tarball — NOT a local package.json from node_modules.
   if (!sha512Content && isNpm && fullName && !isPrivate) {
-    // 4a: Try NPM registry tarball
+    // 4a: Try NPM registry tarball (the canonical deployable artifact)
     const npmTarballUrl = `https://registry.npmjs.org/${fullName}/-/${unscopedName}-${comp.version ?? "0.0.0"}.tgz`;
     try {
       sha512Content = await calculateSha512FromUrl(npmTarballUrl, 10000);
@@ -203,7 +206,7 @@ export async function enrichComponent(comp, options = {}) {
       // Ignore download/hash errors
     }
 
-    // 4b: Try GitHub tarball if VCS URL is available and NPM failed
+    // 4b: Try GitHub release tarball if VCS URL is available and NPM failed
     if (!sha512Content && browseUrl && browseUrl.includes('github.com')) {
       const ghTarballUrl = `${browseUrl}/archive/refs/tags/v${comp.version ?? "0.0.0"}.tar.gz`;
       try {
@@ -211,17 +214,6 @@ export async function enrichComponent(comp, options = {}) {
         if (sha512Content) hashSource = 'calculated';
       } catch {
         // Ignore GitHub download errors
-      }
-    }
-
-    // 4c: Fallback to local node_modules
-    if (!sha512Content) {
-      const pkgPath = path.join(projectRoot, 'node_modules', fullName, 'package.json');
-      try {
-        sha512Content = await calculateSha512(pkgPath, 2000);
-        if (sha512Content) hashSource = 'calculated';
-      } catch {
-        // Ignore calculation errors
       }
     }
   }
