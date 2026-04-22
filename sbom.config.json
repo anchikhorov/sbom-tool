@@ -1,6 +1,6 @@
 {
   "useCyclonedxNpm": false,
-  "creatorEmail": "[EMAIL_ADDRESS]",
+  "creatorEmail": "user@example.com",
   "creatorUrl": "https://www.example.com",
   "exclude": [
     "./node_modules",
